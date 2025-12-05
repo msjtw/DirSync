@@ -6,30 +6,37 @@
 #include <stdlib.h>
 #include <string.h>
 #include <unistd.h>
+#include <fcntl.h>
+#include <unistd.h>
+#include <pthread.h>
+#include "files.h"
 #include "types.h"
 
+
 // Usage:
-// gcc -Wall server.c -o ./server.out
+// gcc -Wall server.c files.c -o ./server.out
 // ./server.out
 
-void thread_watch() {
+void* thread_watch(void* arg) {
+    printf("New thread - start: [%lu]", (unsigned long int)pthread_self());
+    // int new_socket = *((int *)arg);
+
     while (1) {
+        // TODO:
         // wait for changes from client
         // update files
         // send updated file to other clients
     }
-    // detach/disconnect
-};
+    printf("Exit thread_watch \n");
+    pthread_exit(NULL);
+}
 
 
-
-int main(void)
-{
+int main() {
     struct sockaddr_in sa;
     int server_socket = socket(PF_INET, SOCK_STREAM, IPPROTO_TCP);
-    if (server_socket == -1)
-    {
-        perror("cannot create socket");
+    if (server_socket == -1) {
+        perror("Cannot create socket");
         exit(EXIT_FAILURE);
     }
 
@@ -39,30 +46,36 @@ int main(void)
     sa.sin_port = htons(1100);
     sa.sin_addr.s_addr = htonl(INADDR_ANY);
 
-    if (bind(server_socket, (struct sockaddr *)&sa, sizeof sa) == -1) {
-        perror("bind failed");
+    if (bind(server_socket, (struct sockaddr*) &sa, sizeof sa) == -1) {
+        perror("Bind failed");
         close(server_socket);
         exit(EXIT_FAILURE);
     }
 
     if (listen(server_socket, 100) == -1) {
-        perror("listen failed");
+        perror("Listen failed");
         close(server_socket);
         exit(EXIT_FAILURE);
     }
 
+    struct sockaddr_storage server_storage;
+    pthread_t thread_id;
+
     while (1) {
-        int client_socket = accept(server_socket, NULL, NULL);
-        if (client_socket == -1){
-            perror("accept failed");
+        socklen_t addr_size = sizeof server_storage;
+        int client_socket = accept(server_socket, (struct sockaddr *)&server_storage, &addr_size);
+        if (client_socket == -1) {
+            perror("Accept failed");
             close(server_socket);
             exit(EXIT_FAILURE);
         }
 
         // send a copy of current files to newly accepted client
-        // add thread (-> function therad_watch)
 
-        close(client_socket);
+        if (pthread_create(&thread_id, NULL, thread_watch, &client_socket) != 0) {
+            printf("Failed to create thread\n");
+        }
+        pthread_detach(thread_id);
     }
 
     close(server_socket);
