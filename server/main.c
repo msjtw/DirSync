@@ -10,12 +10,12 @@
 #include <unistd.h>
 #include <pthread.h>
 #include "files.h"
-#include "types.h"
+#include "../types.h"
 
 
 // Usage:
-// gcc -Wall server.c files.c -o ./server.out
-// ./server.out
+// gcc -Wall -g -o server server.c files.c
+// ./server
 
 void* thread_watch(void* arg) {
     printf("New thread - start: [%lu]", (unsigned long int)pthread_self());

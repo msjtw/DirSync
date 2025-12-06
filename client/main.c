@@ -1,47 +1,28 @@
-#include <sys/types.h>
-#include <sys/socket.h>
-#include <netinet/in.h>
-#include <arpa/inet.h>
 #include <stdio.h>
 #include <stdlib.h>
-#include <string.h>
 #include <unistd.h>
-#include "types.h"
+#include "../types.h"
+#include "connection.h"
+#include "file_watch.h"
 
 // Usage:
-// gcc -Wall client.c -o ./client.out
-// ./client.out <address> <port> <path>
+// gcc -Wall -g -o ./client main.c connection.c file_watch.c
+// ./client <address> <port> <path>
 
 int main(int argc, char *argv[])
 {
-    struct sockaddr_in sa;
+    // printf("Address: %s // Port: %d // Path: %s\n", argv[1], port, argv[3]);
 
     if (argc < 4) {
         printf("Missing input parametres (usage: ./client.out <address> <port> <path>)");
     }
 
-    int port = atoi(argv[2]);
-    printf("Address: %s // Port: %d // Path: %s\n", argv[1], port, argv[3]);
-    int client_socket = socket(PF_INET, SOCK_STREAM, IPPROTO_TCP);
-    if (client_socket == -1) {
-        perror("Cannot create socket");
-        exit(EXIT_FAILURE);
-    }
+    int c_socket = connection_init(argv[2], argv[1]);
 
-    memset(&sa, 0, sizeof sa);
+    fw_state_t state;
+    fw_init(&state, argv[3]);
 
-    sa.sin_addr.s_addr = inet_addr(argv[1]);
-    sa.sin_family = AF_INET;
-    sa.sin_port = htons(port);
-
-    if (connect(client_socket, (struct sockaddr*) &sa, sizeof sa) == -1) {
-        perror("Connect failed");
-        close(client_socket);
-        exit(EXIT_FAILURE);
-    }
-
-    printf("Connection accepted \n");
-
+    
     // receive a copy from server
     // inotify -> send files after change (create, modify, delete)
     // including folders
@@ -51,6 +32,6 @@ int main(int argc, char *argv[])
 
     // TODO encrypting
 
-    close(client_socket);
+    close(c_socket);
     return EXIT_SUCCESS;
 }
