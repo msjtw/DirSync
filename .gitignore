@@ -1,3 +1,8 @@
+# Files without extentions
+*         # Ignore all files
+!*.*      # Unignore all files with extensions 
+!*/       # Unignore directories
+
 # Prerequisites
 *.d
 
