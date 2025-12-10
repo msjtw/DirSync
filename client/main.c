@@ -1,6 +1,7 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <unistd.h>
+#include <poll.h>
 #include "../types.h"
 #include "connection.h"
 #include "file_watch.h"
@@ -21,6 +22,36 @@ int main(int argc, char *argv[])
 
     fw_state_t state;
     fw_init(&state, argv[3]);
+
+    int fw_socket = state.socket;
+
+    struct pollfd pfds[2];
+    pfds[0].fd = c_socket;
+    pfds[0].events = POLLIN;
+    pfds[1].fd = fw_socket;
+    pfds[1].events = POLLIN;
+
+
+
+    while (1) {
+        int poll_count = poll(pfds, 2, -1);
+        if (pfds[0].revents & POLLIN > 0){ // nonblocking read
+            // read from server
+            // recv_header()
+            // if mess.type == NEW_FILE:  --> protocol.c
+            //     recv_file()
+        }
+        if (pfds[1].revents & POLLIN > 0){ // nonblocking read
+            // read form file change
+            // ...
+            // send file change
+            // send_header() (what happend)
+            // if NEW_FILE:
+            //     send_file()
+        }
+
+    }
+    
 
     
     // receive a copy from server

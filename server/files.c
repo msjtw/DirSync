@@ -36,73 +36,11 @@ int send_file(int client_socket, const char* filename) {
 }
 
 
-int send_file_list(int client_socket, const char* folder_path) {
-    DIR* directory = opendir(folder_path);
-    if (directory == NULL) {
-        perror("Error opening directory");
-        return EXIT_FAILURE;
-    }
-
-    struct dirent* entry;
-    do {
-        entry = readdir(directory);
-        if (strcmp(entry->d_name, ".") == 0 || strcmp(entry->d_name, "..") == 0) {
-            continue;
-        }
-
-        if (send(client_socket, entry->d_name, strlen(entry->d_name)+1, 0) == -1) {
-            perror("Error sending file name");
-            break;
-        }
-    } while (entry != NULL);
-
-    send(client_socket, END_MARKER, strlen(END_MARKER)+1, 0);
-    closedir(directory);
-    return EXIT_SUCCESS;
-}
-
-
-// int send_directory(int client_socket, char path[]) {
-//     DIR* fd;
-// }
-
-int send_directory(int client_socket, const char* path) {
-    printf("Directory tree - entered: %s\n", path);
-    DIR* fd = opendir(path);
-
-    if (fd == NULL) {
-        perror("Failed to open target directory");
-        return EXIT_FAILURE;
-    }
-
-    struct dirent* in_file;
-    do {
-        in_file = readdir(fd);
-
-        if (in_file->d_type == DT_DIR) {
-            if (!(strcmp(".", in_file->d_name) == 0 || strcmp("..", in_file->d_name) == 0)){
-                char *dir_path = malloc(strlen(path) + strlen(in_file->d_name) + 3);
-                strcpy(dir_path, path);
-                strcat(dir_path, "/");
-                strcat(dir_path,  in_file->d_name);
-                send_directory(client_socket, dir_path);
-                free(dir_path);
-            }
-        }
-
-        if (in_file->d_type == DT_REG) {
-            printf("File: %s\n", in_file->d_name);
-            send_file(client_socket, in_file->d_name);
-        }
-
-    } while (in_file);
-
-    closedir(fd);
-    return EXIT_SUCCESS;
-}
-
 int receive_file(int server_socket, const char* filename) {
-    int fd = open(filename, O_WRONLY | O_CREAT);
+    // if filename exists, remove it
+    // remove()
+
+    int fd = open(filename, O_WRONLY | O_CREAT | O_TRUNC);
     if (fd == -1) {
         perror("Error opening file");
         return EXIT_FAILURE;

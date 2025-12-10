@@ -1,9 +1,17 @@
 #include <stdint.h>
 
-typedef struct mesage {
-    uint8_t type;
-    uint64_t name_length;
+enum MSG_TYPE{
+    NEW_FILE,
+    NEW_DIR,
+    REMOVE,
+};
+
+typedef struct header {
+    enum MSG_TYPE type;
     uint64_t size;
-    char *name;
-    char *file_content;
-} message_t;
+    char path[256];
+} header_t;
+
+void receive_header();
+
+void send_header();
