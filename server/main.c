@@ -9,8 +9,8 @@
 #include <fcntl.h>
 #include <unistd.h>
 #include <pthread.h>
-#include "files.h"
 #include "../types.h"
+#include "../protocol.h"
 
 
 // Usage:
