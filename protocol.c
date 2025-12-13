@@ -1,46 +1,49 @@
 // Connection protocol functions
+#include "protocol.h"
+#include <arpa/inet.h>
+#include <endian.h>
+#include <fcntl.h>
+#include <stdint.h>
 #include <stdio.h>
 #include <stdlib.h>
-#include <arpa/inet.h>
-#include <sys/types.h>
+#include <string.h>
 #include <sys/socket.h>
 #include <sys/stat.h>
-#include <fcntl.h>
+#include <sys/types.h>
 #include <unistd.h>
-#include <string.h>
-#include "protocol.h"
-
 
 /////////////////////////////////////////////////////////////
 
-static int receive_file(int sock, const char* filename, char* buff);
+static int receive_file(int sock, const char *filename, char *buff, int bsziem,
+                        char *path_pfx);
+static char *path_concat(const char *path, const char *name);
 
-
-int send_header(int sock, header_t* header) {
-    header->size = htonl(header->size);
-    header->type = htonl(header->type);
-    int n = send(sock, &header, sizeof *header, 0);
+int send_header(int sock, header_t *header) {
+    header->size = htobe64(header->size);
+    int n = send(sock, header, sizeof(header_t), 0);
     if (n < 0) {
         perror("Send header - error");
     }
     return n;
 }
 
-int send_content(int sock, const void* buf, size_t length) {
+int send_content(int sock, const char *buf, size_t length) {
     ssize_t sent = 0;
     while (sent < length) {
-        ssize_t n = send(sock, (char*)buf, length - sent, 0);
-        if (n <= 0) return -1;
+        size_t n = send(sock, buf+sent, length - sent, 0);
+        if (n <= 0)
+            return -1;
         sent += n;
     }
     return EXIT_SUCCESS;
 }
 
-int send_file(int sock, const char* filename) {
-    int file = open(filename, O_RDONLY);
+int send_file(int sock, const char *filename, const char *path_pfx) {
+    char *path = path_concat(path_pfx, filename);
+    int file = open(path, O_RDONLY);
     if (file == -1) {
         perror("Error opening file");
-        return EXIT_FAILURE;    
+        return EXIT_FAILURE;
     }
 
     char buff[256];
@@ -53,64 +56,77 @@ int send_file(int sock, const char* filename) {
             return EXIT_FAILURE;
         }
     } while (bytes_read > 0);
-    
+
+    free(path);
     close(file);
     return EXIT_SUCCESS;
 }
 
 /////////////////////////////////////////////////////////////
 
-static int receive_file(int sock, const char* filename, char* buff) {
-
-    int file = open(filename, O_WRONLY | O_CREAT | O_TRUNC);
+static int receive_file(int sock, const char *filename, char *buff, int bsize,
+                        char *path_pfx) {
+    char *path = path_concat(path_pfx, filename);
+    int file = open(path, O_WRONLY | O_CREAT | O_TRUNC, 0666);
     if (file == -1) {
         perror("Error opening file");
         return EXIT_FAILURE;
     }
 
-    ssize_t bytes_received;
-
-    do {
-        bytes_received = recv(sock, &buff, sizeof(buff), 0);
-        if (write(file, buff, sizeof(buff)) == -1) {
+    printf("read %u bytes\n", bsize);
+    if (bsize > 0) {
+        int bytes_received = recv(sock, buff, bsize, MSG_WAITALL);
+        if (write(file, buff, sizeof *buff) == -1) {
             perror("Writing to file failed");
             return EXIT_FAILURE;
         }
-    } while (bytes_received > 0);
+    }
+    printf("file recved\n");
+
+    free(path);
+    close(file);
 
     return EXIT_SUCCESS;
 }
 
-int receive_message(int sock, message_t* message) {
-    
-    header_t* header = &message->header;
+int receive_message(int sock, message_t *message, char *path_pfx) {
 
-    int n = recv(sock, header, sizeof *header, 0);
-    header->size = ntohl(header->size);
-    header->type = ntohl(header->type);
-    printf("Received message type: %d / size: %ld\n", header->type, header->size);
+    header_t *header = &message->header;
+    int n = recv(sock, header, sizeof(header_t), MSG_WAITALL);
+    header->size = be64toh(header->size);
+
+    printf("Received message type: %u / size: %lu\n", header->type,
+           header->size);
     printf("Received file path %s\n", header->path);
     if (n > 0) {
-        if (header->type == NEW_FILE) {
-            message->content = (char*) malloc(header->size);
+        if (header->type == MT_NEW_FILE) {
+            message->content = (char *)malloc(header->size);
             if (message->content == NULL) {
                 perror("Memory allocation failed");
                 return -1;
             }
-            receive_file(sock, header->path, message->content);
-        }
-        else if (header->type == NEW_DIR) {
+            receive_file(sock, header->path, message->content, header->size, path_pfx);
+        } else if (header->type == MT_NEW_DIR) {
             mkdir(header->path, 0777);
-        }
-        else if (header->type == REMOVE) {
+        } else if (header->type == MT_REMOVE) {
             remove(header->path);
         }
-    }
-    else if (n == 0) {
+    } else if (n == 0) {
         printf("Client disconnected %d\n", sock);
-    }
-    else if (n < 0) {
+    } else if (n < 0) {
         perror("Receive header - error");
-    } 
+    }
     return n;
+}
+
+static char *path_concat(const char *path, const char *name) {
+    int len_path = strlen(path);
+    int len_name = strlen(name);
+    char *new_path = malloc(len_name + len_path + 7);
+
+    strcpy(new_path, path);
+    new_path[len_path] = '/';
+    strcpy(new_path + (len_path + 1), name);
+
+    return new_path;
 }

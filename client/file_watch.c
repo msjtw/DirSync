@@ -28,7 +28,7 @@ int fw_init(fw_state_t *state, char *path) {
         perror("inotify_add_watch fail");
         exit(EXIT_FAILURE);
     }
-    state->wd[wd] = path;
+    state->wd[wd] = ".";
 
     int pfds[2];
     pipe(pfds);
@@ -49,7 +49,7 @@ void fw_close(fw_state_t *state) {
     close(state->fd);
 }
 
-void fw_handle_read(fw_state_t *state) {
+void fw_handle_read(fw_state_t *state, char *path_pfx) {
     int fd = state->fd;
     char buff[BUFF_SIZE];
     memset(buff, 0, sizeof(buff));
@@ -64,32 +64,38 @@ void fw_handle_read(fw_state_t *state) {
         struct inotify_event *event = (struct inotify_event *)&buff[i];
         if (event->len) {
             char *file_path = path_concat(state->wd[event->wd], event->name);
+            char *pfx_path = path_concat(path_pfx, file_path);
+
             header_t msg;
             memset(&msg, 0, sizeof msg);
-            if (event->mask & (IN_CREATE | IN_MODIFY)) {
+            if (event->mask & (IN_CREATE | (IN_MODIFY & IN_CLOSE_WRITE))) {
                 // file modified
-                printf("File %s changed.\n", file_path);
+                printf("File %s changed.\n", pfx_path);
 
                 struct stat filestat;
-                stat(file_path, &filestat);
+                stat(pfx_path, &filestat);
 
                 if (filestat.st_mode & S_IFDIR) {
                     // dir creat
-                    add_fd(state, file_path);
-                    msg.type = NEW_DIR;
+                    add_fd(state, pfx_path);
+                    msg.type = MT_NEW_DIR;
                 } else {
                     // file creat
-                    msg.type = NEW_FILE;
+                    msg.type = MT_NEW_FILE;
                     msg.size = filestat.st_size;
                 }
                 strcpy(msg.path, file_path);
+
+                write(state->msg_fd, &msg, sizeof msg);
             }
             if (event->mask & IN_DELETE) {
                 // file deleted
-                printf("File %s deleted.\n", file_path);
+                printf("File %s deleted.\n", pfx_path);
 
-                msg.type = REMOVE;
+                msg.type = MT_REMOVE;
                 strcpy(msg.path, file_path);
+
+                write(state->msg_fd, &msg, sizeof msg);
 
                 // struct stat buf;
                 // stat(event->name, &buf);
@@ -99,10 +105,8 @@ void fw_handle_read(fw_state_t *state) {
                 // }
             }
 
-            write(state->msg_fd, &msg, sizeof msg);
-
             free(file_path);
-            file_path = NULL;
+            free(pfx_path);
         }
         i += EVENT_SIZE + event->len;
     }
