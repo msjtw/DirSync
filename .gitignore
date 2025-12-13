@@ -2,6 +2,8 @@
 *         # Ignore all files
 !*.*      # Unignore all files with extensions 
 !*/       # Unignore directories
+clinet/client
+server/server
 
 # Prerequisites
 *.d

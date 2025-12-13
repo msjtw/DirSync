@@ -12,8 +12,9 @@
 
 /////////////////////////////////////////////////////////////
 
+
 int send_header(int sock, header_t* header) {
-    int n = send(sock, &header, sizeof header, 0);
+    int n = send(sock, &header, sizeof *header, 0);
     if (n < 0) {
         perror("Send header - error");
     }
@@ -79,7 +80,7 @@ int receive_message(int sock, message_t* message) {
     
     header_t* header = &message->header;
 
-    int n = recv(sock, header, sizeof header, 0);
+    int n = recv(sock, header, sizeof *header, 0);
     if (n > 0) {
         if (header->type == NEW_FILE) {
             message->content = (char*) malloc(header->size);
@@ -101,4 +102,3 @@ int receive_message(int sock, message_t* message) {
     } 
     return n;
 }
-

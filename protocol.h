@@ -1,4 +1,5 @@
 #include <stdint.h>
+#include <stdlib.h>
 
 #define BUFF_SIZE 1024
 
@@ -8,7 +9,8 @@ enum MSG_TYPE{
     REMOVE,
 };
 
-// NOTE header.size and header.path are empty if header.type != NEW_FILE
+// NOTE: header.size and header.path are empty if header.type != NEW_FILE
+// FIX: nie prawda, jak jest REMOVE to też potzrebujesz path co ma być remove
 typedef struct header {
     enum MSG_TYPE type;
     uint64_t size;

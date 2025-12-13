@@ -1,4 +1,5 @@
 #include "file_watch.h"
+#include "../protocol.h"
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -6,7 +7,11 @@
 #include <sys/stat.h>
 #include <unistd.h>
 
-void fw_init(fw_state_t *state, char *path) {
+static void add_fd(fw_state_t *state, char *name);
+static void rem_fd(fw_state_t *state, int wd);
+static char *path_concat(const char *path, const char *name);
+
+int fw_init(fw_state_t *state, char *path) {
     int fd; // inotify descriptor
     if ((fd = inotify_init1(0)) < 0) {
         perror("inotify_init fail");
@@ -24,6 +29,13 @@ void fw_init(fw_state_t *state, char *path) {
         exit(EXIT_FAILURE);
     }
     state->wd[wd] = path;
+
+    int pfds[2];
+    pipe(pfds);
+
+    state->msg_fd = pfds[1];
+
+    return pfds[0];
 }
 
 void fw_close(fw_state_t *state) {
@@ -52,32 +64,45 @@ void fw_handle_read(fw_state_t *state) {
         struct inotify_event *event = (struct inotify_event *)&buff[i];
         if (event->len) {
             printf("event wd %u\n", event->wd);
-            if (event->mask & IN_CREATE) {
+            char *file_path = path_concat(state->wd[event->wd], event->name);
+            header_t msg;
+            memset(&msg, 0, sizeof msg);
+            if (event->mask & (IN_CREATE | IN_MODIFY)) {
+                // file modified
+                // printf("File %s created.\n", file_path);
 
-                char *file_path = path_concat(state->wd[event->wd], event->name);
-                printf("File %s created.\n", file_path);
+                struct stat filestat;
+                stat(file_path, &filestat);
 
-                struct stat buf;
-                stat(file_path, &buf);
-                if (buf.st_mode & S_IFDIR) {
+                if (filestat.st_mode & S_IFDIR) {
+                    // dir creat
                     add_fd(state, file_path);
-                    printf("%s is a dir\n", event->name);
+                    msg.type = NEW_DIR;
                 } else {
-                    free(file_path);
+                    // file creat
+                    msg.type = NEW_FILE;
+                    msg.size = filestat.st_size;
                 }
+                strcpy(msg.path, file_path);
             }
             if (event->mask & IN_DELETE) {
-                printf("File %s deleted.\n", event->name);
-                struct stat buf;
-                stat(event->name, &buf);
-                if (buf.st_mode & S_IFDIR) {
-                    printf("%s is a dir\n", event->name);
-                    rem_fd(state, event->wd);
-                }
+                // printf("File %s deleted.\n", event->name);
+
+                msg.type = REMOVE;
+                strcpy(msg.path, file_path);
+
+                // struct stat buf;
+                // stat(event->name, &buf);
+                // if (buf.st_mode & S_IFDIR) {
+                //     printf("%s is a dir\n", event->name);
+                //     rem_fd(state, event->wd);
+                // }
             }
-            if (event->mask & IN_MODIFY) {
-                printf("File %s modified.\n", event->name);
-            }
+
+            write(state->msg_fd, &msg, sizeof msg);
+
+            free(file_path);
+            file_path = NULL;
         }
         i += EVENT_SIZE + event->len;
     }
