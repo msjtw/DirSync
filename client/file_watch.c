@@ -63,13 +63,12 @@ void fw_handle_read(fw_state_t *state) {
     while (i < len) {
         struct inotify_event *event = (struct inotify_event *)&buff[i];
         if (event->len) {
-            printf("event wd %u\n", event->wd);
             char *file_path = path_concat(state->wd[event->wd], event->name);
             header_t msg;
             memset(&msg, 0, sizeof msg);
             if (event->mask & (IN_CREATE | IN_MODIFY)) {
                 // file modified
-                // printf("File %s created.\n", file_path);
+                printf("File %s changed.\n", file_path);
 
                 struct stat filestat;
                 stat(file_path, &filestat);
@@ -86,7 +85,8 @@ void fw_handle_read(fw_state_t *state) {
                 strcpy(msg.path, file_path);
             }
             if (event->mask & IN_DELETE) {
-                // printf("File %s deleted.\n", event->name);
+                // file deleted
+                printf("File %s deleted.\n", file_path);
 
                 msg.type = REMOVE;
                 strcpy(msg.path, file_path);
