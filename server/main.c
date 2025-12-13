@@ -113,6 +113,7 @@ void* receive_messages(void *arg) {
 
     while (1) {
 
+
         pthread_mutex_lock(&message_mutex);
         int count = total_clients;
         for (int i = 0; i < count; i++) {
@@ -121,7 +122,8 @@ void* receive_messages(void *arg) {
         }
         pthread_mutex_unlock(&message_mutex);
 
-        int n = poll(poll_set, count, -1);
+
+        int n = poll(poll_set, count, 5);
         if (n < 0) {
             perror("Poll error");
             continue;
@@ -150,7 +152,7 @@ void* receive_messages(void *arg) {
             }
 
             header_t header = message.header;
-            printf("Received new header from client: %d / %s\n", header.type, header.path);
+            printf("Received new header from client: %u / %s\n", header.type, header.path);
 
             pthread_mutex_lock(&message_mutex);            
             while (current_message.clients_sent > 0 || current_message.content != NULL) {
@@ -173,7 +175,8 @@ void* receive_messages(void *arg) {
 int main(int argc, char *argv[])
 {
     if (argc < 2) {
-        printf("Missing input parametres (usage: ./server <port>)");
+        fprintf(stderr, "Missing input parametres (usage: ./server <port>)");
+        exit(1);
     }
 
     int server_socket = connection_init(argv[1], MAX_CLIENTS);

@@ -38,7 +38,7 @@ int send_file(int sock, const char* filename) {
         return EXIT_FAILURE;    
     }
 
-    char buff[BUFF_SIZE];
+    char buff[256];
     ssize_t bytes_read;
 
     do {
@@ -81,6 +81,7 @@ int receive_message(int sock, message_t* message) {
     header_t* header = &message->header;
 
     int n = recv(sock, header, sizeof *header, 0);
+    printf("received file path %s\n", header->path);
     if (n > 0) {
         if (header->type == NEW_FILE) {
             message->content = (char*) malloc(header->size);

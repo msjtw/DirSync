@@ -1,7 +1,8 @@
 #include <stdint.h>
 #include <stdlib.h>
 
-#define BUFF_SIZE 1024
+// FIX: BUFF_SIZE redefinition
+// #define BUFF_SIZE 1024
 
 enum MSG_TYPE{
     NEW_FILE,
