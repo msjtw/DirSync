@@ -15,26 +15,16 @@
 
 #define MAX_CLIENTS 100
 
-// Usage (from 'server' directory):
-// gcc -Wall -g -o server main.c connection.c ../protocol.c
-// ./server <port>
-
-struct server_message {
-    int id;
-    header_t header;
-    char* content;
-    int clients_sent;
-};
-
-/////////////////////////////////////////////////////////////////////////
-
 pthread_mutex_t message_mutex = PTHREAD_MUTEX_INITIALIZER;
 pthread_cond_t condition_mutex = PTHREAD_COND_INITIALIZER;
 
-struct server_message current_message;
+struct message current_message;
 int total_clients = 0;
 int client_sockets[MAX_CLIENTS];
 
+// Usage (from 'server' directory):
+// gcc -Wall -g -o server main.c connection.c ../protocol.c
+// ./server <port>
 
 void remove_client(int client_socket) {
     for (int i = 0; i < total_clients; i++) {
@@ -62,6 +52,13 @@ void* client_thread(void *arg) {
     int client_socket = *((int*) arg);
     free(arg);
 
+    // TODO send a copy of current files to newly accepted client
+
+
+
+
+
+
     int last_message_id = 0;
 
     while (1) {
@@ -69,7 +66,7 @@ void* client_thread(void *arg) {
         while (current_message.id == last_message_id) {
             pthread_cond_wait(&condition_mutex, &message_mutex);
         }
-        struct server_message msg;
+        struct message msg;
         msg.id = current_message.id;
         msg.header = current_message.header;
         msg.content = current_message.content;
@@ -133,16 +130,15 @@ void* receive_messages(void *arg) {
             continue;
         }
 
-
         for (int i = 0; i < count; i++) {
-
             if (!(poll_set[i].revents & POLLIN)) continue;
+            struct message message;
+            message.clients_sent = 0;
+            message.content = NULL;
 
             int fd = poll_set[i].fd;
-            header_t header;
-            int n1 = recv(fd, &header, sizeof header, 0);
-            
-            if (n1 <= 0) {
+            int n = receive_message(fd, &message);
+            if (n <= 0) {
                 close(fd);
                 perror("Receiving header failed");
 
@@ -153,30 +149,10 @@ void* receive_messages(void *arg) {
                 continue;
             }
 
-            struct server_message message;
-            message.header = header;
-            message.clients_sent = 0;
-            message.content = NULL;
+            header_t header = message.header;
             printf("Received new header from client: %d / %s\n", header.type, header.path);
 
-            if (header.type == NEW_FILE && header.size > 0) {
-                message.content = (char*) malloc(header.size);
-                if (message.content == NULL) {
-                    perror("Memory allocation failed");
-                    continue;
-                }
-
-                size_t received = 0;
-                while (received < header.size) {
-                    int n2 = recv(poll_set[i].fd, message.content + received, header.size - received, 0);
-                    if (n2 <= 0) break;
-                    received += n2;
-                }
-            }
-
-
-            pthread_mutex_lock(&message_mutex);
-            
+            pthread_mutex_lock(&message_mutex);            
             while (current_message.clients_sent > 0 || current_message.content != NULL) {
                 pthread_cond_wait(&condition_mutex, &message_mutex);
             }
@@ -217,8 +193,6 @@ int main(int argc, char *argv[])
 
     struct sockaddr_in client_addr;
     socklen_t addr_size = sizeof client_addr;
-
-
     pthread_t thread_id;
 
     while (1) {
@@ -243,8 +217,6 @@ int main(int argc, char *argv[])
         }
         pthread_detach(thread_id);
     }
-
-    // TODO (?) send a copy of current files to newly accepted client
 
     close(server_socket);
     return EXIT_SUCCESS;

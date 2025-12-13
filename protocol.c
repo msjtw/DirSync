@@ -9,7 +9,6 @@
 #include <string.h>
 #include "protocol.h"
 
-#define BUFF_SIZE 1024
 
 /////////////////////////////////////////////////////////////
 
@@ -55,28 +54,7 @@ int send_file(int sock, const char* filename) {
 
 /////////////////////////////////////////////////////////////
 
-int receive_header(int sock) {
-    header_t header;
-    
-    int n = recv(sock, &header, sizeof header, 0);
-    if (n > 0) {
-        if (header.type == NEW_FILE) {
-            receive_file(sock, header.path);
-        }
-        else if (header.type == NEW_DIR) {
-            mkdir(header.path, 0777);
-        }
-        else if (header.type == REMOVE) {
-            remove(header.path);
-        }
-    }
-    else if (n < 0) {
-        perror("Receive header - error");
-    } 
-    return n;
-}
-
-int receive_file(int sock, const char* filename) {
+int receive_file(int sock, const char* filename, char* buff) {
 
     int file = open(filename, O_WRONLY | O_CREAT | O_TRUNC);
     if (file == -1) {
@@ -84,11 +62,10 @@ int receive_file(int sock, const char* filename) {
         return EXIT_FAILURE;
     }
 
-    char buff[BUFF_SIZE];
     ssize_t bytes_received;
 
     do {
-        bytes_received = recv(sock, buff, sizeof(buff), 0);
+        bytes_received = recv(sock, &buff, sizeof(buff), 0);
         if (write(file, buff, sizeof(buff)) == -1) {
             perror("Writing to file failed");
             return EXIT_FAILURE;
@@ -97,3 +74,31 @@ int receive_file(int sock, const char* filename) {
 
     return EXIT_SUCCESS;
 }
+
+int receive_message(int sock, message_t* message) {
+    
+    header_t* header = &message->header;
+
+    int n = recv(sock, header, sizeof header, 0);
+    if (n > 0) {
+        if (header->type == NEW_FILE) {
+            message->content = (char*) malloc(header->size);
+            if (message->content == NULL) {
+                perror("Memory allocation failed");
+                return -1;
+            }
+            receive_file(sock, header->path, message->content);
+        }
+        else if (header->type == NEW_DIR) {
+            mkdir(header->path, 0777);
+        }
+        else if (header->type == REMOVE) {
+            remove(header->path);
+        }
+    }
+    else if (n < 0) {
+        perror("Receive header - error");
+    } 
+    return n;
+}
+

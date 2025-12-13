@@ -1,5 +1,7 @@
 #include <stdint.h>
 
+#define BUFF_SIZE 1024
+
 enum MSG_TYPE{
     NEW_FILE,
     NEW_DIR,
@@ -14,9 +16,17 @@ typedef struct header {
 } header_t;
 
 
+typedef struct message {
+    int id;
+    header_t header;
+    char* content;
+    int clients_sent;
+} message_t;
+
+
 int send_header(int sock, header_t* header);
 int send_content(int sock, const void* buf, size_t length);
 int send_file(int sock, const char* filename);
 
-int receive_header(int sock);
-int receive_file(int sock, const char* filename);
+int receive_message(int sock, message_t* message);
+int receive_file(int sock, const char* filename, char* buff);
