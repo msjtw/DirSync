@@ -18,7 +18,7 @@
 pthread_mutex_t message_mutex = PTHREAD_MUTEX_INITIALIZER;
 pthread_cond_t condition_mutex = PTHREAD_COND_INITIALIZER;
 
-struct message current_message;
+message_t current_message;
 int total_clients = 0;
 int client_sockets[MAX_CLIENTS];
 
@@ -53,9 +53,6 @@ void* client_thread(void *arg) {
     free(arg);
 
     // TODO send a copy of current files to newly accepted client
-
-
-
 
 
 
@@ -112,8 +109,6 @@ void* receive_messages(void *arg) {
     struct pollfd poll_set[MAX_CLIENTS]; 
 
     while (1) {
-
-
         pthread_mutex_lock(&message_mutex);
         int count = total_clients;
         for (int i = 0; i < count; i++) {
@@ -123,24 +118,24 @@ void* receive_messages(void *arg) {
         pthread_mutex_unlock(&message_mutex);
 
 
-        int n = poll(poll_set, count, 5);
-        if (n < 0) {
+        int n1 = poll(poll_set, count, 5);
+        if (n1 < 0) {
             perror("Poll error");
             continue;
         }
-        else if (n == 0) { // No events
+        else if (n1 == 0) { // No events
             continue;
         }
 
         for (int i = 0; i < count; i++) {
             if (!(poll_set[i].revents & POLLIN)) continue;
-            struct message message;
+            message_t message;
             message.clients_sent = 0;
             message.content = NULL;
 
             int fd = poll_set[i].fd;
-            int n = receive_message(fd, &message);
-            if (n <= 0) {
+            int n2 = receive_message(fd, &message);
+            if (n2 <= 0) {
                 close(fd);
                 perror("Receiving header failed");
 
@@ -175,7 +170,7 @@ void* receive_messages(void *arg) {
 int main(int argc, char *argv[])
 {
     if (argc < 2) {
-        fprintf(stderr, "Missing input parametres (usage: ./server <port>)");
+        fprintf(stderr, "Missing input parametres (usage: ./server <port>)\n");
         exit(1);
     }
 

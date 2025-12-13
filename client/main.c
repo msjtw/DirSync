@@ -60,12 +60,12 @@ int main(int argc, char *argv[]) {
             }
             if (hdr.type == NEW_FILE) {
                 // NEW_FILE
-                printf("sending new file %s mssg\n", hdr.path);
+                printf("sending new file %s msg %lu\n", hdr.path, hdr.size);
                 send_header(c_socket, &hdr);
                 send_file(c_socket, hdr.path);
             } else {
                 // NEW_DIR or REMOVE
-                printf("sending new dir | rm %s mssg\n", hdr.path);
+                printf("sending new dir rm %s msg %lu\n", hdr.path, hdr.size);
                 send_header(c_socket, &hdr);
             }
         }

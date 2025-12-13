@@ -10,8 +10,7 @@ enum MSG_TYPE{
     REMOVE,
 };
 
-// NOTE: header.size and header.path are empty if header.type != NEW_FILE
-// FIX: nie prawda, jak jest REMOVE to też potzrebujesz path co ma być remove
+// NOTE: header.size and message.content are empty if header.type != NEW_FILE
 typedef struct header {
     enum MSG_TYPE type;
     uint64_t size;
@@ -32,4 +31,3 @@ int send_content(int sock, const void* buf, size_t length);
 int send_file(int sock, const char* filename);
 
 int receive_message(int sock, message_t* message);
-int receive_file(int sock, const char* filename, char* buff);

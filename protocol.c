@@ -1,6 +1,7 @@
 // Connection protocol functions
 #include <stdio.h>
 #include <stdlib.h>
+#include <arpa/inet.h>
 #include <sys/types.h>
 #include <sys/socket.h>
 #include <sys/stat.h>
@@ -12,8 +13,12 @@
 
 /////////////////////////////////////////////////////////////
 
+static int receive_file(int sock, const char* filename, char* buff);
+
 
 int send_header(int sock, header_t* header) {
+    header->size = htonl(header->size);
+    header->type = htonl(header->type);
     int n = send(sock, &header, sizeof *header, 0);
     if (n < 0) {
         perror("Send header - error");
@@ -55,7 +60,7 @@ int send_file(int sock, const char* filename) {
 
 /////////////////////////////////////////////////////////////
 
-int receive_file(int sock, const char* filename, char* buff) {
+static int receive_file(int sock, const char* filename, char* buff) {
 
     int file = open(filename, O_WRONLY | O_CREAT | O_TRUNC);
     if (file == -1) {
@@ -81,7 +86,10 @@ int receive_message(int sock, message_t* message) {
     header_t* header = &message->header;
 
     int n = recv(sock, header, sizeof *header, 0);
-    printf("received file path %s\n", header->path);
+    header->size = ntohl(header->size);
+    header->type = ntohl(header->type);
+    printf("Received message type: %d / size: %ld\n", header->type, header->size);
+    printf("Received file path %s\n", header->path);
     if (n > 0) {
         if (header->type == NEW_FILE) {
             message->content = (char*) malloc(header->size);
@@ -97,6 +105,9 @@ int receive_message(int sock, message_t* message) {
         else if (header->type == REMOVE) {
             remove(header->path);
         }
+    }
+    else if (n == 0) {
+        printf("Client disconnected %d\n", sock);
     }
     else if (n < 0) {
         perror("Receive header - error");
