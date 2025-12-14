@@ -54,11 +54,17 @@ void *client_thread(void *arg) {
     int client_socket = *((int *)arg);
     free(arg);
 
-    // TODO send a copy of current files to newly accepted client
+    int ok = 1;
+    int n0 = send_dir_tree(client_socket, ".");
+    if (n0 < 0) {
+        printf("Error - sending files copy to client %d", client_socket);
+        ok = 0;
+    }
+
 
     int last_message_id = 0;
 
-    while (1) {
+    while (1 && ok) {
         pthread_mutex_lock(&message_mutex);
         while (current_message.id == last_message_id) {
             pthread_cond_wait(&condition_mutex, &message_mutex);

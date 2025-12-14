@@ -11,6 +11,7 @@
 #include <sys/stat.h>
 #include <sys/types.h>
 #include <unistd.h>
+#include <dirent.h>
 
 /////////////////////////////////////////////////////////////
 
@@ -59,6 +60,70 @@ int send_file(int sock, const char *filename, const char *path_pfx) {
 
     free(path);
     close(file);
+    return EXIT_SUCCESS;
+}
+
+int send_dir_tree(int sock, char path[]) {
+    DIR* dir = opendir(path);
+    if (!dir) {
+        perror("Failed to open target directory");
+        return EXIT_FAILURE;
+    }
+
+    header_t header;
+    header.type = 2; // NEW_DIR
+    header.size = NULL;
+    strcpy(header.path, path);
+    int n1 = send_header(sock, &header);
+    if (n1 < 0) {
+        printf("Client disconnected %d during header send (NEW_DIR)\n", sock);
+        return EXIT_FAILURE;
+    }
+
+    struct dirent* file;
+    while (file = readdir(dir) != NULL) {
+
+        if (file->d_type == DT_DIR) {
+            if (strcmp(file->d_name, ".") == 0 || strcmp(file->d_name, "..") == 0) {
+                continue;
+            }
+
+            char* dir_path = malloc(strlen(path) + strlen(file->d_name) + 3);
+            strcpy(dir_path, path);
+            strcat(dir_path, "/");
+            strcat(dir_path,  file->d_name);
+            send_dir_tree(sock, dir_path);
+            free(dir_path);
+
+        }
+        else if (file->d_type == DT_REG) {
+            char* file_path = malloc(strlen(path) + strlen(file->d_name) + 3);
+            strcpy(file_path, path);
+            strcat(file_path, "/");
+            strcat(file_path,  file->d_name);
+
+            header_t header;
+            header.type = 1; // NEW_FILE
+            header.size = 1;
+            strcpy(header.path, file_path);
+
+
+            int n1 = send_header(sock, &header);
+            if (n1 < 0) {
+                printf("Client disconnected %d during header send\n", sock);
+                break;
+            }
+
+            int n2 = send_file(sock, file_path, ".");
+            if (n2 < 0) {
+                printf("Client disconnected %d during file content send\n", sock);
+                break;
+            }
+
+            free(file_path);
+        }
+    }
+    closedir(dir);
     return EXIT_SUCCESS;
 }
 

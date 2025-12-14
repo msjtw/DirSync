@@ -28,5 +28,6 @@ typedef struct message {
 int send_header(int sock, header_t* header);
 int send_content(int sock, const char* buf, size_t length);
 int send_file(int sock, const char* filename, const char* path_pfx);
+int send_dir_tree(int sock, char path[]);
 
 int receive_message(int sock, message_t* message, char* path_pfx);

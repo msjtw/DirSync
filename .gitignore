@@ -4,6 +4,7 @@
 !*/       # Unignore directories
 client/client
 server/server
+*Zone.Identifier
 
 # Prerequisites
 *.d
