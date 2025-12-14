@@ -81,7 +81,8 @@ int send_dir_tree(int sock, const char* path) {
 
         char temp[1024];
         const char* path_inner = path + strlen(SERVER_STORAGE);
-        snprintf(temp, sizeof temp, ".%s", path_inner);
+        snprintf(temp, sizeof temp, ".%s", path_inner[0] == '/' ? path_inner+1 : path_inner);
+
         printf("Inner path: %s\n", path_inner);
 
 
@@ -132,7 +133,7 @@ int send_dir_tree(int sock, const char* path) {
 
             char temp2[1024];
             const char* file_path_inner = file_path + strlen(SERVER_STORAGE);
-            snprintf(temp2, sizeof temp2, ".%s", file_path_inner);
+            snprintf(temp2, sizeof temp2, ".%s", file_path_inner[0] == '/' ? file_path_inner+1 : file_path_inner);
 
             strcpy(header.path, file_path_inner);
 
@@ -159,8 +160,7 @@ int send_dir_tree(int sock, const char* path) {
 
 /////////////////////////////////////////////////////////////
 
-static int receive_file(int sock, const char *filename, char *buff, int bsize,
-                        char *path_pfx) {
+static int receive_file(int sock, const char *filename, char *buff, int bsize, char *path_pfx) {
     char *path = path_concat(path_pfx, filename);
     int file = open(path, O_WRONLY | O_CREAT | O_TRUNC, 0666);
     if (file == -1) {
@@ -171,7 +171,7 @@ static int receive_file(int sock, const char *filename, char *buff, int bsize,
     printf("read %u bytes\n", bsize);
     if (bsize > 0) {
         int bytes_received = recv(sock, buff, bsize, MSG_WAITALL);
-        if (write(file, buff, sizeof bsize) == -1) {
+        if (write(file, buff, bsize) == -1) {
             perror("Writing to file failed");
             return EXIT_FAILURE;
         }
@@ -193,6 +193,10 @@ int receive_message(int sock, message_t *message, char *path_pfx) {
     header->size = be64toh(header->size);
 
     printf("Received message type: %u / size: %lu\n", header->type, header->size);
+    if (header->type == 0) {
+        printf("Received invalid message - break\n");
+        return 0;
+    }
 
     char full_path[2048];
     strcpy(full_path, path_pfx);
@@ -216,6 +220,7 @@ int receive_message(int sock, message_t *message, char *path_pfx) {
         }
     } else if (n == 0) {
         printf("Client disconnected %d\n", sock);
+        close(sock);
     } else if (n < 0) {
         perror("Receive header - error");
     }

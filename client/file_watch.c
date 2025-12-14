@@ -68,7 +68,7 @@ void fw_handle_read(fw_state_t *state, char *path_pfx) {
 
             header_t msg;
             memset(&msg, 0, sizeof msg);
-            if (event->mask & (IN_CREATE | (IN_MODIFY & IN_CLOSE_WRITE))) {
+            if (event->mask & (IN_CREATE | IN_MODIFY | IN_CLOSE_WRITE)) {
                 // file modified
                 printf("File %s changed.\n", pfx_path);
 

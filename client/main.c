@@ -53,8 +53,15 @@ int main(int argc, char *argv[]) {
             message_t msg;
             memset(&msg, 0, sizeof msg);
 
-            if (receive_message(c_socket, &msg, path_pfx) == -1) {
+            int n = receive_message(c_socket, &msg, path_pfx);
+            if (n < 0) {
                 perror("Error - receive_message");
+                break;
+            }
+            else if (n == 0) {
+                // disconnect
+                printf("Receive message: n == 0 -> disconnect\n");
+                break;
             }
             strcpy(last_rcv_path, msg.header.path);
             free(msg.content);
@@ -77,8 +84,9 @@ int main(int argc, char *argv[]) {
             if (hdr.type == MT_NEW_FILE) {
                 // NEW_FILE
                 printf("sending new file %s type: %u size: %lu\n", hdr.path, hdr.type, hdr.size);
-                send_header(c_socket, &hdr);
-                send_file(c_socket, hdr.path, path_pfx);
+                int n1 = send_header(c_socket, &hdr);
+                int n2 = send_file(c_socket, hdr.path, path_pfx);
+                printf("n1: %d / n2: %d\n", n1, n2);
             } else {
                 // NEW_DIR or REMOVE
                 printf("sending new dir rm %s type %u size: %lu\n", hdr.path, hdr.type, hdr.size);
