@@ -28,6 +28,7 @@ int main(int argc, char *argv[]) {
 
     int c_socket = connection_init(argv[2], argv[1]);
 
+    // TODO check if input path exists (if not - disconnect) 
     strcpy(path_pfx, argv[3]);
     fw_state_t state;
     int msg_fd = fw_init(&state, path_pfx);
@@ -50,7 +51,11 @@ int main(int argc, char *argv[]) {
             // form server
             printf("recv msg from server\n");
             message_t msg;
-            receive_message(c_socket, &msg, path_pfx);
+            memset(&msg, 0, sizeof msg);
+
+            if (receive_message(c_socket, &msg, path_pfx) == -1) {
+                perror("Error - receive_message");
+            }
             strcpy(last_rcv_path, msg.header.path);
             free(msg.content);
         }
@@ -61,6 +66,8 @@ int main(int argc, char *argv[]) {
         if (pfds[2].revents & POLLIN) {
             // actions from inotify
             header_t hdr;
+            memset(&hdr, 0, sizeof hdr);
+
             read(pfds[2].fd, &hdr, sizeof hdr);
             if (strcmp(last_rcv_path, hdr.path) == 0) {
                 memset(&last_rcv_path, 0, sizeof last_rcv_path);

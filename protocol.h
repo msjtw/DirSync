@@ -8,6 +8,8 @@
 #define MT_NEW_DIR 2
 #define MT_REMOVE 3
 
+#define SERVER_STORAGE "./storage/"
+
 // NOTE: header.size and message.content are empty if header.type != NEW_FILE
 typedef struct header {
     uint8_t type;
@@ -28,6 +30,6 @@ typedef struct message {
 int send_header(int sock, header_t* header);
 int send_content(int sock, const char* buf, size_t length);
 int send_file(int sock, const char* filename, const char* path_pfx);
-int send_dir_tree(int sock, char path[]);
+int send_dir_tree(int sock, const char* path);
 
 int receive_message(int sock, message_t* message, char* path_pfx);

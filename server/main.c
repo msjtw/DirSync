@@ -22,12 +22,6 @@ int total_clients = 0;
 int client_sockets[MAX_CLIENTS];
 int client_ports[MAX_CLIENTS];
 
-char path_pfx[] = "/dev/null";
-
-// Usage (from 'server' directory):
-// gcc -Wall -g -o server main.c connection.c ../protocol.c
-// ./server <port>
-
 void remove_client(int client_socket) {
     for (int i = 0; i < total_clients; i++) {
         if (client_sockets[i] == client_socket) {
@@ -55,12 +49,11 @@ void *client_thread(void *arg) {
     free(arg);
 
     int ok = 1;
-    int n0 = send_dir_tree(client_socket, ".");
+    int n0 = send_dir_tree(client_socket, SERVER_STORAGE);
     if (n0 < 0) {
         printf("Error - sending files copy to client %d", client_socket);
         ok = 0;
     }
-
 
     int last_message_id = 0;
 
@@ -78,6 +71,7 @@ void *client_thread(void *arg) {
 
         /////////////////
         if (msg.sender_fd != client_socket) {
+            printf("Sending header - type: %d / client: %d / path: %s\n", msg.header.type, client_socket, msg.header.path);
             int n1 = send_header(client_socket, &msg.header);
             if (n1 < 0) {
                 printf("Client disconnected %d during header send\n",
@@ -144,11 +138,13 @@ void *receive_messages(void *arg) {
             int fd = poll_set[i].fd;
 
             message_t message;
+            memset(&message, 0, sizeof message);
+
             message.clients_sent = 0;
             message.content = NULL;
             message.sender_fd = fd;
 
-            int n2 = receive_message(fd, &message, path_pfx);
+            int n2 = receive_message(fd, &message, SERVER_STORAGE);
             printf("msg recvd\n");
             if (n2 <= 0) {
                 close(fd);
@@ -162,8 +158,8 @@ void *receive_messages(void *arg) {
             }
 
             header_t header = message.header;
-            printf("Received new header from client %u type:%u ;path:%s\n",
-                   client_ports[fd], header.type, header.path);
+            printf("Received new header from client %u type: %u / path: %s\n",
+                   client_ports[fd], header.type, header.path); // NOTE to be fixed (client_ports[client_index])
 
             pthread_mutex_lock(&message_mutex);
             while (current_message.clients_sent > 0 ||

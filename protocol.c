@@ -63,25 +63,38 @@ int send_file(int sock, const char *filename, const char *path_pfx) {
     return EXIT_SUCCESS;
 }
 
-int send_dir_tree(int sock, char path[]) {
+int send_dir_tree(int sock, const char* path) {
     DIR* dir = opendir(path);
     if (!dir) {
         perror("Failed to open target directory");
         return EXIT_FAILURE;
     }
 
-    header_t header;
-    header.type = 2; // NEW_DIR
-    header.size = NULL;
-    strcpy(header.path, path);
-    int n1 = send_header(sock, &header);
-    if (n1 < 0) {
-        printf("Client disconnected %d during header send (NEW_DIR)\n", sock);
-        return EXIT_FAILURE;
+    printf("Entered send_dir_tree (%s), client: %d\n", path, sock);
+
+    if (strcmp(path, SERVER_STORAGE) != 0) { // skip main directory
+        header_t header;
+        memset(&header, 0, sizeof header);
+
+        header.type = MT_NEW_DIR;
+        header.size = (uint64_t) NULL;
+
+        char temp[1024];
+        const char* path_inner = path + strlen(SERVER_STORAGE);
+        snprintf(temp, sizeof temp, ".%s", path_inner);
+        printf("Inner path: %s\n", path_inner);
+
+
+        strcpy(header.path, path_inner);
+        int n1 = send_header(sock, &header);
+        if (n1 < 0) {
+            printf("Client disconnected %d during header send (NEW_DIR)\n", sock);
+            return EXIT_FAILURE;
+        }
     }
 
     struct dirent* file;
-    while (file = readdir(dir) != NULL) {
+    while ((file = readdir(dir)) != NULL) {
 
         if (file->d_type == DT_DIR) {
             if (strcmp(file->d_name, ".") == 0 || strcmp(file->d_name, "..") == 0) {
@@ -89,6 +102,10 @@ int send_dir_tree(int sock, char path[]) {
             }
 
             char* dir_path = malloc(strlen(path) + strlen(file->d_name) + 3);
+            if (dir_path == NULL) {
+                perror("send_dir_tree / dir_path - malloc failed");
+            }
+
             strcpy(dir_path, path);
             strcat(dir_path, "/");
             strcat(dir_path,  file->d_name);
@@ -98,15 +115,28 @@ int send_dir_tree(int sock, char path[]) {
         }
         else if (file->d_type == DT_REG) {
             char* file_path = malloc(strlen(path) + strlen(file->d_name) + 3);
+            if (file_path == NULL) {
+                perror("send_dir_tree / file_path - malloc failed");
+            }
+
+
             strcpy(file_path, path);
             strcat(file_path, "/");
             strcat(file_path,  file->d_name);
 
             header_t header;
-            header.type = 1; // NEW_FILE
-            header.size = 1;
-            strcpy(header.path, file_path);
+            memset(&header, 0, sizeof header);
 
+            header.type = MT_NEW_FILE;
+            header.size = (uint64_t) NULL;
+
+            char temp2[1024];
+            const char* file_path_inner = file_path + strlen(SERVER_STORAGE);
+            snprintf(temp2, sizeof temp2, ".%s", file_path_inner);
+
+            strcpy(header.path, file_path_inner);
+
+            printf("send_dir_tree -> %s (inner path: %s), client: %d\n", file_path, file_path_inner, sock);
 
             int n1 = send_header(sock, &header);
             if (n1 < 0) {
@@ -114,7 +144,7 @@ int send_dir_tree(int sock, char path[]) {
                 break;
             }
 
-            int n2 = send_file(sock, file_path, ".");
+            int n2 = send_file(sock, file_path_inner, ".");
             if (n2 < 0) {
                 printf("Client disconnected %d during file content send\n", sock);
                 break;
@@ -141,7 +171,7 @@ static int receive_file(int sock, const char *filename, char *buff, int bsize,
     printf("read %u bytes\n", bsize);
     if (bsize > 0) {
         int bytes_received = recv(sock, buff, bsize, MSG_WAITALL);
-        if (write(file, buff, sizeof *buff) == -1) {
+        if (write(file, buff, sizeof bsize) == -1) {
             perror("Writing to file failed");
             return EXIT_FAILURE;
         }
@@ -157,12 +187,18 @@ static int receive_file(int sock, const char *filename, char *buff, int bsize,
 int receive_message(int sock, message_t *message, char *path_pfx) {
 
     header_t *header = &message->header;
+    memset(header, 0, sizeof *header);
+
     int n = recv(sock, header, sizeof(header_t), MSG_WAITALL);
     header->size = be64toh(header->size);
 
-    printf("Received message type: %u / size: %lu\n", header->type,
-           header->size);
-    printf("Received file path %s\n", header->path);
+    printf("Received message type: %u / size: %lu\n", header->type, header->size);
+
+    char full_path[2048];
+    strcpy(full_path, path_pfx);
+    strcat(full_path, header->path);
+    printf("Received file path: <%s>,  full path: %s\n", header->path, full_path);
+
     if (n > 0) {
         if (header->type == MT_NEW_FILE) {
             message->content = (char *)malloc(header->size);
@@ -171,10 +207,12 @@ int receive_message(int sock, message_t *message, char *path_pfx) {
                 return -1;
             }
             receive_file(sock, header->path, message->content, header->size, path_pfx);
-        } else if (header->type == MT_NEW_DIR) {
-            mkdir(header->path, 0777);
-        } else if (header->type == MT_REMOVE) {
-            remove(header->path);
+        }
+        else if (header->type == MT_NEW_DIR) {
+            mkdir(full_path, 0777);
+        }
+        else if (header->type == MT_REMOVE) {
+            remove(full_path);
         }
     } else if (n == 0) {
         printf("Client disconnected %d\n", sock);

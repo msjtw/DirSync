@@ -25,7 +25,7 @@ int connection_init(const char *port, const char *address) {
         exit(EXIT_FAILURE);
     }
 
-    printf("Connection accepted ");
+    printf("Connection accepted %d\n", client_socket);
     struct sockaddr_in sin;
     socklen_t len = sizeof(sin);
     if (getsockname(client_socket, (struct sockaddr *)&sin, &len) == -1)
