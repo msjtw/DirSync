@@ -1,6 +1,7 @@
 #include "../protocol.h"
 #include "connection.h"
 #include <arpa/inet.h>
+#include <bits/pthreadtypes.h>
 #include <fcntl.h>
 #include <netinet/in.h>
 #include <poll.h>
@@ -17,7 +18,7 @@
 pthread_mutex_t client_conn_mutex = PTHREAD_MUTEX_INITIALIZER;
 pthread_cond_t condition_mutex = PTHREAD_COND_INITIALIZER;
 
-message_t current_message;
+message_t message;
 int total_clients = 0;
 int client_sockets[MAX_CLIENTS];
 int client_ports[MAX_CLIENTS];
@@ -33,79 +34,41 @@ void remove_client(int client_socket) {
     total_clients--;
 }
 
-void free_message() {
-    if (current_message.clients_sent == total_clients) {
-        free(current_message.content);
-        current_message.content = NULL;
-        current_message.clients_sent = 0;
-        pthread_cond_broadcast(&condition_mutex);
-    }
-}
-
 /////////////////////////////////////////////////////////////////////////
+
+static void client_disconneted(int fd) {
+    pthread_mutex_lock(&client_conn_mutex);
+    remove_client(fd);
+    pthread_mutex_unlock(&client_conn_mutex);
+
+    printf("Exited client %d thread\n", fd);
+}
 
 void *client_thread(void *arg) {
     int client_socket = *((int *)arg);
-    free(arg);
 
-    int ok = 1;
-    // int n0 = send_dir_tree(client_socket, SERVER_STORAGE);
-    // if (n0 < 0) {
-    //     printf("Error - sending files copy to client %d", client_socket);
-    //     ok = 0;
-    // }
-
-    int last_message_id = 0;
-
-    while (1 && ok) {
-        pthread_mutex_lock(&client_conn_mutex);
-        while (current_message.id == last_message_id) {
-            pthread_cond_wait(&condition_mutex, &client_conn_mutex);
+    /////////////////
+    if (message.sender_fd != client_socket) {
+        printf("Sending header - type: %d / client: %d / path: %s\n",
+               message.header.type, client_socket,
+               message.header.path);
+        int header_nbytes = send_header(client_socket, &message.header);
+        if (header_nbytes <= 0) {
+            printf("Client %d disconnected during header send\n",
+                   client_ports[client_socket]);
+            client_disconneted(client_socket);
         }
-        struct message msg;
-        msg.id = current_message.id;
-        msg.header = current_message.header;
-        msg.sender_fd = current_message.sender_fd;
-        msg.content = current_message.content;
-        pthread_mutex_unlock(&client_conn_mutex);
 
-        /////////////////
-        if (msg.sender_fd != client_socket) {
-            printf("Sending header - type: %d / client: %d / path: %s\n", msg.header.type, client_socket, msg.header.path);
-            int n1 = send_header(client_socket, &msg.header);
-            if (n1 < 0) {
-                printf("Client disconnected %d during header send\n",
-                       client_socket);
-                break;
-            }
-
-            if (msg.content && msg.header.size > 0) {
-                int n2 =
-                    send_content(client_socket, msg.content, msg.header.size);
-                if (n2 < 0) {
-                    printf(
-                        "Client disconnected %d during message content send\n",
-                        client_socket);
-                    break;
-                }
+        if (message.content && message.header.hsize > 0) {
+            int content_nbytes = send_content(client_socket, &message);
+            if (content_nbytes <= 0) {
+                printf("Client %d disconnected during message content send\n",
+                       client_ports[client_socket]);
+                client_disconneted(client_socket);
             }
         }
-        /////////////////
-
-        pthread_mutex_lock(&client_conn_mutex);
-        current_message.clients_sent++;
-        last_message_id = current_message.id;
-        free_message();
-        pthread_mutex_unlock(&client_conn_mutex);
     }
-
-    // Client disconnected
-    pthread_mutex_lock(&client_conn_mutex);
-    remove_client(client_socket);
-    free_message();
-    pthread_mutex_unlock(&client_conn_mutex);
-
-    printf("Exited client %d thread\n", client_socket);
+    printf("send to %d\n", client_ports[client_socket]);
     pthread_exit(NULL);
 }
 
@@ -124,51 +87,60 @@ void *receive_messages(void *arg) {
         }
         pthread_mutex_unlock(&client_conn_mutex);
 
-        int n1 = poll(poll_set, count, 5);
-        if (n1 < 0) {
+        int poll_cnt = poll(poll_set, count, 5);
+        if (poll_cnt < 0) {
             perror("Poll error");
             continue;
-        } else if (n1 == 0) { // No events
+        } else if (poll_cnt == 0) { // No events
             continue;
         }
+        printf("-------------------\n");
 
         for (int i = 0; i < count; i++) {
             if (!(poll_set[i].revents & POLLIN))
                 continue;
             int fd = poll_set[i].fd;
 
-            message_t message;
+
             memset(&message, 0, sizeof message);
 
             message.clients_sent = 0;
             message.content = NULL;
             message.sender_fd = fd;
 
-            int n2 = receive_message(fd, &message, SERVER_STORAGE);
+            int rcv_status = receive_message(fd, &message, SERVER_STORAGE);
             printf("msg recvd\n");
-            if (n2 <= 0) {
+            if (rcv_status <= 0) {
                 close(fd);
                 perror("Receiving header failed");
 
                 pthread_mutex_lock(&client_conn_mutex);
                 remove_client(fd);
-                free_message();
                 pthread_mutex_unlock(&client_conn_mutex);
                 continue;
             }
 
             header_t header = message.header;
-            printf("Received new header from client %u type: %u / path: %s\n",
-                   client_ports[fd], header.type, header.path); // NOTE: to be fixed (client_ports[client_index])
+            printf(
+                "Received new header from client %u type: %u / path: %s\n",
+                client_ports[fd], header.type,
+                header.path); // NOTE: to be fixed (client_ports[client_index])
 
+            // send message co clients
             pthread_mutex_lock(&client_conn_mutex);
-            while (current_message.clients_sent > 0 || current_message.content != NULL) {
-                pthread_cond_wait(&condition_mutex, &client_conn_mutex);
+            int created_threads = total_clients;
+            pthread_t *tids = malloc(total_clients * sizeof(pthread_t));
+            for (int i = 0; i < total_clients; i++) {
+                pthread_create(&tids[i], NULL, client_thread,
+                               &client_sockets[i]);
             }
-            message.id = current_message.id + 1;
-            current_message = message;
-            pthread_cond_broadcast(&condition_mutex);
             pthread_mutex_unlock(&client_conn_mutex);
+            for (int i = 0; i < created_threads; i++) {
+                pthread_join(tids[i], NULL);
+            }
+            printf("all sends finished\n");
+            free(tids);
+            free(message.content);
         }
     }
 
@@ -200,15 +172,13 @@ int main(int argc, char *argv[]) {
 
     struct sockaddr_in client_addr;
     socklen_t addr_size = sizeof client_addr;
-    pthread_t thread_id;
 
     while (1) {
         int client_socket =
             accept(server_socket, (struct sockaddr *)&client_addr, &addr_size);
         if (client_socket == -1) {
             perror("Accept failed");
-            close(server_socket);
-            exit(EXIT_FAILURE);
+            continue;
         }
 
         pthread_mutex_lock(&client_conn_mutex);
@@ -216,15 +186,6 @@ int main(int argc, char *argv[]) {
         client_ports[client_socket] = ntohs(client_addr.sin_port);
         total_clients++;
         pthread_mutex_unlock(&client_conn_mutex);
-
-        int *p_client = malloc(sizeof(int));
-        *p_client = client_socket;
-        if (pthread_create(&thread_id, NULL, client_thread, p_client) != 0) {
-            printf("Failed to create client thread\n");
-            free(p_client);
-            continue;
-        }
-        pthread_detach(thread_id);
     }
 
     close(server_socket);

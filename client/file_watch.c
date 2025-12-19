@@ -82,7 +82,8 @@ void fw_handle_read(fw_state_t *state, char *path_pfx) {
                 } else {
                     // file creat
                     msg.type = MT_NEW_FILE;
-                    msg.size = filestat.st_size;
+                    msg.hsize = filestat.st_size;
+                    msg.nsize = htobe64(msg.hsize);
                 }
                 strcpy(msg.path, file_path);
 
@@ -115,6 +116,7 @@ void fw_handle_read(fw_state_t *state, char *path_pfx) {
 static void add_fd(fw_state_t *state, char *name) {
     int wd; //  watch descriptor for the filesystem object (inode) that
             //  corresponds to path
+    printf("adding dir: >%s<\n", name);
     if ((wd = inotify_add_watch(state->fd, name, IN_FLAGS)) < 0) {
         perror("inotify_add_watch fail");
         exit(EXIT_FAILURE);
@@ -124,7 +126,7 @@ static void add_fd(fw_state_t *state, char *name) {
         state->size <<= 1;
         state->wd = realloc(state->wd, state->size * sizeof(char *));
     }
-    state->wd[wd] = name;
+    strcpy(state->wd[wd], name);
 }
 
 static void rem_fd(fw_state_t *state, int wd) {

@@ -47,6 +47,7 @@ int main(int argc, char *argv[]) {
     char last_rcv_path[256];
     while (1) {
         int poll_count = poll(pfds, 4, -1);
+        printf("-----------\n");
         if (pfds[0].revents & POLLIN) {
             // form server
             printf("recv msg from server\n");
@@ -83,13 +84,13 @@ int main(int argc, char *argv[]) {
             }
             if (hdr.type == MT_NEW_FILE) {
                 // NEW_FILE
-                printf("sending new file %s type: %u size: %lu\n", hdr.path, hdr.type, hdr.size);
+                printf("sending new file %s type: %u size: %lu\n", hdr.path, hdr.type, hdr.hsize);
                 int n1 = send_header(c_socket, &hdr);
                 int n2 = send_file(c_socket, hdr.path, path_pfx);
                 printf("send: %d header bytes and %d file bytes\n", n1, n2);
             } else {
                 // NEW_DIR or REMOVE
-                printf("sending new dir rm %s type %u size: %lu\n", hdr.path, hdr.type, hdr.size);
+                printf("sending new dir rm %s type %u size: %lu\n", hdr.path, hdr.type, hdr.hsize);
                 send_header(c_socket, &hdr);
             }
         }

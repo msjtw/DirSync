@@ -13,23 +13,22 @@
 // NOTE: header.size and message.content are empty if header.type != NEW_FILE
 typedef struct header {
     uint8_t type;
-    uint64_t size;
+    uint64_t nsize; // network ordered size
+    uint64_t hsize; // host ordered size
     char path[256];
 } header_t;
-
 
 typedef struct message {
     int id;
     header_t header;
-    char* content;
+    char *content;
     int clients_sent;
     int sender_fd;
 } message_t;
 
+int send_header(const int sock, const header_t *header);
+int send_content(const int sock, const message_t *msg);
+int send_file(const int sock, const char *filename, const char *path_pfx);
+int send_dir_tree(const int sock, const char *path);
 
-int send_header(int sock, header_t* header);
-int send_content(int sock, const char* buf, size_t length);
-int send_file(int sock, const char* filename, const char* path_pfx);
-int send_dir_tree(int sock, const char* path);
-
-int receive_message(int sock, message_t* message, char* path_pfx);
+int receive_message(const int sock, message_t *message, const char *path_pfx);
