@@ -14,7 +14,7 @@
 
 #define MAX_CLIENTS 100
 
-pthread_mutex_t message_mutex = PTHREAD_MUTEX_INITIALIZER;
+pthread_mutex_t client_conn_mutex = PTHREAD_MUTEX_INITIALIZER;
 pthread_cond_t condition_mutex = PTHREAD_COND_INITIALIZER;
 
 message_t current_message;
@@ -49,25 +49,25 @@ void *client_thread(void *arg) {
     free(arg);
 
     int ok = 1;
-    int n0 = send_dir_tree(client_socket, SERVER_STORAGE);
-    if (n0 < 0) {
-        printf("Error - sending files copy to client %d", client_socket);
-        ok = 0;
-    }
+    // int n0 = send_dir_tree(client_socket, SERVER_STORAGE);
+    // if (n0 < 0) {
+    //     printf("Error - sending files copy to client %d", client_socket);
+    //     ok = 0;
+    // }
 
     int last_message_id = 0;
 
     while (1 && ok) {
-        pthread_mutex_lock(&message_mutex);
+        pthread_mutex_lock(&client_conn_mutex);
         while (current_message.id == last_message_id) {
-            pthread_cond_wait(&condition_mutex, &message_mutex);
+            pthread_cond_wait(&condition_mutex, &client_conn_mutex);
         }
         struct message msg;
         msg.id = current_message.id;
         msg.header = current_message.header;
         msg.sender_fd = current_message.sender_fd;
         msg.content = current_message.content;
-        pthread_mutex_unlock(&message_mutex);
+        pthread_mutex_unlock(&client_conn_mutex);
 
         /////////////////
         if (msg.sender_fd != client_socket) {
@@ -92,37 +92,37 @@ void *client_thread(void *arg) {
         }
         /////////////////
 
-        pthread_mutex_lock(&message_mutex);
+        pthread_mutex_lock(&client_conn_mutex);
         current_message.clients_sent++;
         last_message_id = current_message.id;
         free_message();
-        pthread_mutex_unlock(&message_mutex);
+        pthread_mutex_unlock(&client_conn_mutex);
     }
 
     // Client disconnected
-    pthread_mutex_lock(&message_mutex);
+    pthread_mutex_lock(&client_conn_mutex);
     remove_client(client_socket);
     free_message();
-    pthread_mutex_unlock(&message_mutex);
+    pthread_mutex_unlock(&client_conn_mutex);
 
     printf("Exited client %d thread\n", client_socket);
     pthread_exit(NULL);
 }
 
 /////////////////////////////////////////////////////////////////////////
-
+// thre
 void *receive_messages(void *arg) {
 
     struct pollfd poll_set[MAX_CLIENTS];
 
     while (1) {
-        pthread_mutex_lock(&message_mutex);
+        pthread_mutex_lock(&client_conn_mutex);
         int count = total_clients;
         for (int i = 0; i < count; i++) {
             poll_set[i].fd = client_sockets[i];
             poll_set[i].events = POLLIN;
         }
-        pthread_mutex_unlock(&message_mutex);
+        pthread_mutex_unlock(&client_conn_mutex);
 
         int n1 = poll(poll_set, count, 5);
         if (n1 < 0) {
@@ -150,26 +150,25 @@ void *receive_messages(void *arg) {
                 close(fd);
                 perror("Receiving header failed");
 
-                pthread_mutex_lock(&message_mutex);
+                pthread_mutex_lock(&client_conn_mutex);
                 remove_client(fd);
                 free_message();
-                pthread_mutex_unlock(&message_mutex);
+                pthread_mutex_unlock(&client_conn_mutex);
                 continue;
             }
 
             header_t header = message.header;
             printf("Received new header from client %u type: %u / path: %s\n",
-                   client_ports[fd], header.type, header.path); // NOTE to be fixed (client_ports[client_index])
+                   client_ports[fd], header.type, header.path); // NOTE: to be fixed (client_ports[client_index])
 
-            pthread_mutex_lock(&message_mutex);
-            while (current_message.clients_sent > 0 ||
-                   current_message.content != NULL) {
-                pthread_cond_wait(&condition_mutex, &message_mutex);
+            pthread_mutex_lock(&client_conn_mutex);
+            while (current_message.clients_sent > 0 || current_message.content != NULL) {
+                pthread_cond_wait(&condition_mutex, &client_conn_mutex);
             }
             message.id = current_message.id + 1;
             current_message = message;
             pthread_cond_broadcast(&condition_mutex);
-            pthread_mutex_unlock(&message_mutex);
+            pthread_mutex_unlock(&client_conn_mutex);
         }
     }
 
@@ -212,11 +211,11 @@ int main(int argc, char *argv[]) {
             exit(EXIT_FAILURE);
         }
 
-        pthread_mutex_lock(&message_mutex);
+        pthread_mutex_lock(&client_conn_mutex);
         client_sockets[total_clients] = client_socket;
         client_ports[client_socket] = ntohs(client_addr.sin_port);
         total_clients++;
-        pthread_mutex_unlock(&message_mutex);
+        pthread_mutex_unlock(&client_conn_mutex);
 
         int *p_client = malloc(sizeof(int));
         *p_client = client_socket;

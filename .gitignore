@@ -5,6 +5,8 @@
 client/client
 server/server
 *Zone.Identifier
+tests/a
+tests/b
 
 # Prerequisites
 *.d

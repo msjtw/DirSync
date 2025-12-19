@@ -48,10 +48,13 @@ int send_file(int sock, const char *filename, const char *path_pfx) {
     }
 
     char buff[256];
-    ssize_t bytes_read;
+    size_t bytes_read;
+    size_t sendc = 0;
+
 
     do {
         bytes_read = read(file, buff, sizeof(buff));
+        sendc += bytes_read;
         if (send(sock, buff, bytes_read, 0) == -1) {
             perror("Cannot send file");
             return EXIT_FAILURE;
@@ -60,7 +63,7 @@ int send_file(int sock, const char *filename, const char *path_pfx) {
 
     free(path);
     close(file);
-    return EXIT_SUCCESS;
+    return sendc;
 }
 
 int send_dir_tree(int sock, const char* path) {

@@ -86,7 +86,7 @@ int main(int argc, char *argv[]) {
                 printf("sending new file %s type: %u size: %lu\n", hdr.path, hdr.type, hdr.size);
                 int n1 = send_header(c_socket, &hdr);
                 int n2 = send_file(c_socket, hdr.path, path_pfx);
-                printf("n1: %d / n2: %d\n", n1, n2);
+                printf("send: %d header bytes and %d file bytes\n", n1, n2);
             } else {
                 // NEW_DIR or REMOVE
                 printf("sending new dir rm %s type %u size: %lu\n", hdr.path, hdr.type, hdr.size);
