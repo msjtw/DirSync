@@ -7,7 +7,7 @@
 #include <sys/stat.h>
 #include <unistd.h>
 
-static void add_fd(fw_state_t *state, char *name);
+static void add_fd(fw_state_t *state, char *name, char *pfx_path);
 static void rem_fd(fw_state_t *state, int wd);
 static char *path_concat(const char *path, const char *name);
 
@@ -28,7 +28,8 @@ int fw_init(fw_state_t *state, char *path) {
         perror("inotify_add_watch fail");
         exit(EXIT_FAILURE);
     }
-    state->wd[wd] = ".";
+    state->wd[wd] = malloc(strlen("."));
+    strcpy(state->wd[wd], ".");
 
     int pfds[2];
     pipe(pfds);
@@ -65,6 +66,7 @@ void fw_handle_read(fw_state_t *state, char *path_pfx) {
         if (event->len) {
             char *file_path = path_concat(state->wd[event->wd], event->name);
             char *pfx_path = path_concat(path_pfx, file_path);
+            printf("file event path:>%s< pfx_path:>%s<\n", file_path, pfx_path);
 
             header_t msg;
             memset(&msg, 0, sizeof msg);
@@ -77,7 +79,7 @@ void fw_handle_read(fw_state_t *state, char *path_pfx) {
 
                 if (filestat.st_mode & S_IFDIR) {
                     // dir creat
-                    add_fd(state, pfx_path);
+                    add_fd(state, file_path, pfx_path);
                     msg.type = MT_NEW_DIR;
                 } else {
                     // file creat
@@ -93,17 +95,18 @@ void fw_handle_read(fw_state_t *state, char *path_pfx) {
                 // file deleted
                 printf("File %s deleted.\n", pfx_path);
 
+                struct stat filestat;
+                stat(pfx_path, &filestat);
+
+                if (filestat.st_mode & S_IFDIR) {
+                    printf("%s is a dir\n", pfx_path);
+                    rem_fd(state, event->wd);
+                }
+
                 msg.type = MT_REMOVE;
                 strcpy(msg.path, file_path);
 
                 write(state->msg_fd, &msg, sizeof msg);
-
-                // struct stat buf;
-                // stat(event->name, &buf);
-                // if (buf.st_mode & S_IFDIR) {
-                //     printf("%s is a dir\n", event->name);
-                //     rem_fd(state, event->wd);
-                // }
             }
 
             free(file_path);
@@ -113,11 +116,11 @@ void fw_handle_read(fw_state_t *state, char *path_pfx) {
     }
 }
 
-static void add_fd(fw_state_t *state, char *name) {
+static void add_fd(fw_state_t *state, char *name, char *pfx_path) {
     int wd; //  watch descriptor for the filesystem object (inode) that
             //  corresponds to path
     printf("adding dir: >%s<\n", name);
-    if ((wd = inotify_add_watch(state->fd, name, IN_FLAGS)) < 0) {
+    if ((wd = inotify_add_watch(state->fd, pfx_path, IN_FLAGS)) < 0) {
         perror("inotify_add_watch fail");
         exit(EXIT_FAILURE);
     }
@@ -126,6 +129,7 @@ static void add_fd(fw_state_t *state, char *name) {
         state->size <<= 1;
         state->wd = realloc(state->wd, state->size * sizeof(char *));
     }
+    state->wd[wd] = malloc(strlen(name));
     strcpy(state->wd[wd], name);
 }
 
