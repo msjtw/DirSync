@@ -66,7 +66,7 @@ void fw_handle_read(fw_state_t *state, char *path_pfx) {
         if (event->len) {
             char *file_path = path_concat(state->wd[event->wd], event->name);
             char *pfx_path = path_concat(path_pfx, file_path);
-            printf("file event path:>%s< pfx_path:>%s<\n", file_path, pfx_path);
+            printf("file event %b path:>%s< pfx_path:>%s<\n", event->mask, file_path, pfx_path);
 
             header_t msg;
             memset(&msg, 0, sizeof msg);

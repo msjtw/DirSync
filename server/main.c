@@ -61,6 +61,10 @@ void *client_thread(void *arg) {
 
         if (message.content && message.header.hsize > 0) {
             int content_nbytes = send_content(client_socket, &message);
+            if(content_nbytes != message.header.hsize){
+                printf("send %d instead of %d bytes", content_nbytes, message.header.hsize);
+                exit(1);
+            }
             if (content_nbytes <= 0) {
                 printf("Client %d disconnected during message content send\n",
                        client_ports[client_socket]);

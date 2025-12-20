@@ -15,7 +15,7 @@
 
 /////////////////////////////////////////////////////////////
 
-static int receive_file(int sock, const char *filename, char *buff, int bsziem,
+static void receive_file(int sock, const char *filename, char *buff, int bsziem,
                         char *path_pfx);
 static char *path_concat(const char *path, const char *name);
 
@@ -38,8 +38,8 @@ int send_content(const int sock, const message_t *msg) {
     return sent;
 }
 
-int send_file(const int sock, const char *filename, const char *path_pfx) {
-    char *path = path_concat(path_pfx, filename);
+int send_file(const int sock, const header_t *hdr, const char *path_pfx) {
+    char *path = path_concat(path_pfx, hdr->path);
     int file = open(path, O_RDONLY);
     if (file == -1) {
         perror("Error opening file");
@@ -50,15 +50,14 @@ int send_file(const int sock, const char *filename, const char *path_pfx) {
     size_t bytes_read;
     size_t sendc = 0;
 
-
-    do {
-        bytes_read = read(file, buff, sizeof(buff));
+    while(sendc < hdr->hsize) {
+        bytes_read = read(file, buff, hdr->hsize - sendc);
         sendc += bytes_read;
         if (send(sock, buff, bytes_read, 0) == -1) {
             perror("Cannot send file");
             return EXIT_FAILURE;
         }
-    } while (bytes_read > 0);
+    };
 
     free(path);
     close(file);
@@ -147,7 +146,7 @@ int send_dir_tree(const int sock, const char* path) {
                 break;
             }
 
-            int n2 = send_file(sock, file_path_inner, ".");
+            int n2 = send_file(sock, &header, ".");
             if (n2 < 0) {
                 printf("Client disconnected %d during file content send\n", sock);
                 break;
@@ -162,30 +161,29 @@ int send_dir_tree(const int sock, const char* path) {
 
 /////////////////////////////////////////////////////////////
 
-static int receive_file(int sock, const char *filename, char *buff, int bsize, char *path) {
+static void receive_file(int sock, const char *filename, char *buff, int file_size, char *path) {
     int file = open(path, O_WRONLY | O_CREAT | O_TRUNC, 0666);
     if (file == -1) {
         perror("Error opening file");
-        return EXIT_FAILURE;
+        return;
     }
 
-    printf("read %u bytes\n", bsize);
-    if (bsize > 0) {
-        int nbytes_received = recv(sock, buff, bsize, MSG_WAITALL);
+    printf("reading %u bytes\n", file_size);
+    if (file_size > 0) {
+        int nbytes_received = recv(sock, buff, file_size, MSG_WAITALL);
         if (nbytes_received <= 0) {
             perror("rcv content failed");
-            return EXIT_FAILURE;
+            return;
         }
-        if (write(file, buff, bsize) == -1) {
+        if (write(file, buff, file_size) == -1) {
             perror("Writing to file failed");
-            return EXIT_FAILURE;
+            return;
         }
     }
     printf("file recved\n");
 
     close(file);
-
-    return EXIT_SUCCESS;
+    return;
 }
 
 int receive_message(const int sock, message_t *message, const char *path_pfx) {
@@ -197,9 +195,9 @@ int receive_message(const int sock, message_t *message, const char *path_pfx) {
     header->hsize = be64toh(header->nsize);
 
     printf("Received message type: %u / size: %lu\n", header->type, header->hsize);
-    if (header->type == 0) {
+    if (header->type == 0 || header->type > 3) {
         printf("Received invalid message - break\n");
-        return -1;
+        exit(1);
     }
 
     char *full_path = path_concat(path_pfx, header->path);
