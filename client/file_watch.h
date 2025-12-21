@@ -5,7 +5,7 @@
 #define NAME_MAX 256
 #define BUFF_SIZE (32 * (EVENT_SIZE + NAME_MAX + 1))
 
-#define IN_FLAGS IN_CREATE | IN_DELETE | IN_MODIFY
+#define IN_FLAGS IN_CREATE | IN_DELETE | IN_MODIFY | IN_MOVED_FROM
 
 typedef struct fw_state {
     int fd;

@@ -91,7 +91,7 @@ void fw_handle_read(fw_state_t *state, char *path_pfx) {
 
                 write(state->msg_fd, &msg, sizeof msg);
             }
-            if (event->mask & IN_DELETE) {
+            if (event->mask & (IN_DELETE | IN_MOVED_FROM)) {
                 // file deleted
                 printf("File %s deleted.\n", pfx_path);
 

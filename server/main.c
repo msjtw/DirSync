@@ -3,6 +3,7 @@
 #include <arpa/inet.h>
 #include <bits/pthreadtypes.h>
 #include <fcntl.h>
+#include <ftw.h>
 #include <netinet/in.h>
 #include <poll.h>
 #include <pthread.h>
@@ -22,6 +23,12 @@ message_t message;
 int total_clients = 0;
 int client_sockets[MAX_CLIENTS];
 int client_ports[MAX_CLIENTS];
+
+void rm_storage() {
+    if (!fork()) {
+        execlp("rm", "rm", "-r", SERVER_STORAGE, (char *)NULL);
+    }
+}
 
 void remove_client(int client_socket) {
     for (int i = 0; i < total_clients; i++) {
@@ -50,8 +57,7 @@ void *client_thread(void *arg) {
     /////////////////
     if (message.sender_fd != client_socket) {
         printf("Sending header - type: %d / client: %d / path: %s\n",
-               message.header.type, client_socket,
-               message.header.path);
+               message.header.type, client_socket, message.header.path);
         int header_nbytes = send_header(client_socket, &message.header);
         if (header_nbytes <= 0) {
             printf("Client %d disconnected during header send\n",
@@ -61,8 +67,9 @@ void *client_thread(void *arg) {
 
         if (message.content && message.header.hsize > 0) {
             int content_nbytes = send_content(client_socket, &message);
-            if(content_nbytes != message.header.hsize){
-                printf("send %d instead of %d bytes", content_nbytes, message.header.hsize);
+            if (content_nbytes != message.header.hsize) {
+                printf("send %d instead of %ld bytes", content_nbytes,
+                       message.header.hsize);
                 exit(1);
             }
             if (content_nbytes <= 0) {
@@ -105,7 +112,6 @@ void *receive_messages(void *arg) {
                 continue;
             int fd = poll_set[i].fd;
 
-
             memset(&message, 0, sizeof message);
 
             message.clients_sent = 0;
@@ -114,13 +120,21 @@ void *receive_messages(void *arg) {
 
             int rcv_status = receive_message(fd, &message, SERVER_STORAGE);
             printf("msg recvd\n");
-            if (rcv_status <= 0) {
+            if (rcv_status < 0) {
                 close(fd);
                 perror("Receiving header failed");
 
                 pthread_mutex_lock(&client_conn_mutex);
                 remove_client(fd);
                 pthread_mutex_unlock(&client_conn_mutex);
+                continue;
+            } else if (rcv_status == 0) {
+                printf("Client disconnected %d\n", client_ports[fd]);
+                client_disconneted(fd);
+                continue;
+            } else if (rcv_status < 0) {
+                perror("Receive header - error");
+                client_disconneted(fd);
                 continue;
             }
 
@@ -184,6 +198,8 @@ int main(int argc, char *argv[]) {
             perror("Accept failed");
             continue;
         }
+
+        send_dir_tree(client_socket, SERVER_STORAGE);
 
         pthread_mutex_lock(&client_conn_mutex);
         client_sockets[total_clients] = client_socket;
