@@ -18,10 +18,6 @@ int connection_init(const char *port, int max_clients) {
         exit(EXIT_FAILURE);
     }
 
-    // Source - https://stackoverflow.com/a
-    // Posted by Chnossos, modified by community. See post 'Timeline' for change
-    // history Retrieved 2025-12-13, License - CC BY-SA 4.0
-
     const int enable = 1;
     if (setsockopt(server_socket, SOL_SOCKET, SO_REUSEADDR | SO_REUSEPORT,
                    &enable, sizeof(int)) < 0) {
